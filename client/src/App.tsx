@@ -1,13 +1,13 @@
-import { useState } from 'react'
-import './App.css'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import LandingPage from './pages/shared/Landingpage'
 
-function App() {
+export default function App() {
   return (
-    <div>
-      <h1>Artisan Connect NW</h1>
-      <p>Platform loading...</p>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        {/* More routes added here as we build each page */}
+      </Routes>
+    </BrowserRouter>
   )
 }
-
-export default App
