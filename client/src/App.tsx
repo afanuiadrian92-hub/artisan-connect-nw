@@ -10,9 +10,9 @@ import LoginPage         from './pages/shared/LoginPage'
 import RegisterPage      from './pages/shared/RegisterPage'
 import CustomerDashboard from './pages/customer/CustomerDashboard'
 import ArtisanDashboard  from './pages/artisan/ArtisanDashboard'
+import ArtisanProfilePage from './pages/artisan/ArtisanProfilePage'
 import AdminDashboard    from './pages/admin/AdminDashboard'
 import SettingsPage from './pages/shared/SettingsPage'
-import ArtisanProfilePage from './pages/artisan/ArtisanProfilePage'
 
 
 // ─── Smart redirect for already-logged-in users ───────────────────────────────
@@ -48,7 +48,8 @@ function AppRoutes() {
       <Route path="/search"            element={<ProtectedRoute allowedRoles={['customer']}><SearchPage /></ProtectedRoute>} />
       <Route path="/customer/bookings" element={<ProtectedRoute allowedRoles={['customer']}><MyBookingsPage /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-      <Route path="/artisan" element={<ProtectedRoute allowedRoles={['artisan']}><ArtisanProfilePage /></ProtectedRoute>} />
+      <Route path="/artisan/profile" element={<ProtectedRoute allowedRoles={['artisan']}><ArtisanProfilePage /></ProtectedRoute>}
+/>
 
       {/* Protected routes — role-locked */}
       <Route

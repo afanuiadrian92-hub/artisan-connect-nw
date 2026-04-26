@@ -1,17 +1,16 @@
 // ─── NW Region Geography Data ─────────────────────────────────────────────────
-// Quarters are the hyperlocal location units used by residents.
-// Each quarter belongs to a division for admin/analytics grouping.
-// Users interact with quarters; the backend groups them by division.
+// Strategy:
+//   1. Popular Bamenda/Mezam quarters listed for instant offline autocomplete
+//   2. Anything not in this list is geocoded live via Nominatim (OpenStreetMap)
+//      so the platform never needs manual updates as it expands to other divisions
 
 export interface Quarter {
   name: string
   division: string
 }
 
-// Popular quarters across NW Region — focused on Bamenda (Mezam) and
-// surrounding towns in other divisions. Expand as platform grows.
 export const quarters: Quarter[] = [
-  // ── Mezam Division (Bamenda) ────────────────────────────────────────────────
+  // ── Mezam Division — Bamenda ─────────────────────────────────────────────────
   { name: 'Mile 1',              division: 'Mezam' },
   { name: 'Mile 2',              division: 'Mezam' },
   { name: 'Mile 3',              division: 'Mezam' },
@@ -34,49 +33,68 @@ export const quarters: Quarter[] = [
   { name: 'Musang',              division: 'Mezam' },
   { name: 'Savanna',             division: 'Mezam' },
   { name: 'Hospital Roundabout', division: 'Mezam' },
-
-  // ── Mezam — Surrounding towns ───────────────────────────────────────────────
   { name: 'Bambili',             division: 'Mezam' },
   { name: 'Bambui',              division: 'Mezam' },
   { name: 'Bali',                division: 'Mezam' },
-
-  // ── Momo Division ───────────────────────────────────────────────────────────
-  { name: 'Mbengwi Town',        division: 'Momo'  },
-  { name: 'Widikum',             division: 'Momo'  },
-  { name: 'Batibo',              division: 'Momo'  },
-  { name: 'Njikwa',              division: 'Momo'  },
-
-  // ── Bui Division ────────────────────────────────────────────────────────────
-  { name: 'Kumbo Town',          division: 'Bui'   },
-  { name: 'Jakiri',              division: 'Bui'   },
-  { name: 'Nkambe',              division: 'Bui'   },
-
-  // ── Menchum Division ────────────────────────────────────────────────────────
-  { name: 'Wum Town',            division: 'Menchum' },
-  { name: 'Furu-Awa',            division: 'Menchum' },
-
-  // ── Boyo Division ───────────────────────────────────────────────────────────
-  { name: 'Fundong',             division: 'Boyo'  },
-  { name: 'Belo',                division: 'Boyo'  },
-
-  // ── Donga-Mantung Division ──────────────────────────────────────────────────
+  // ── Momo ─────────────────────────────────────────────────────────────────────
+  { name: 'Mbengwi Town',        division: 'Momo'          },
+  { name: 'Widikum',             division: 'Momo'          },
+  { name: 'Batibo',              division: 'Momo'          },
+  { name: 'Njikwa',              division: 'Momo'          },
+  // ── Bui ──────────────────────────────────────────────────────────────────────
+  { name: 'Kumbo Town',          division: 'Bui'           },
+  { name: 'Jakiri',              division: 'Bui'           },
+  // ── Menchum ──────────────────────────────────────────────────────────────────
+  { name: 'Wum Town',            division: 'Menchum'       },
+  { name: 'Furu-Awa',            division: 'Menchum'       },
+  // ── Boyo ─────────────────────────────────────────────────────────────────────
+  { name: 'Fundong',             division: 'Boyo'          },
+  { name: 'Belo',                division: 'Boyo'          },
+  // ── Donga-Mantung ────────────────────────────────────────────────────────────
   { name: 'Nkambe Town',         division: 'Donga-Mantung' },
   { name: 'Ako',                 division: 'Donga-Mantung' },
-
-  // ── Ngo-Ketunjia Division ───────────────────────────────────────────────────
-  { name: 'Ndop',                division: 'Ngo-Ketunjia' },
-  { name: 'Babessi',             division: 'Ngo-Ketunjia' },
+  // ── Ngo-Ketunjia ─────────────────────────────────────────────────────────────
+  { name: 'Ndop',                division: 'Ngo-Ketunjia'  },
+  { name: 'Babessi',             division: 'Ngo-Ketunjia'  },
 ]
 
-// Sorted alphabetically for dropdowns
 export const quarterNames = quarters
   .map((q) => q.name)
   .sort((a, b) => a.localeCompare(b))
 
-// All unique division names
 export const divisions = [...new Set(quarters.map((q) => q.division))].sort()
 
-// Look up which division a quarter belongs to
-export const getDivisionByQuarter = (quarterName: string): string => {
-  return quarters.find((q) => q.name === quarterName)?.division ?? 'Unknown'
+export const getDivisionByQuarter = (name: string): string =>
+  quarters.find((q) => q.name === name)?.division ?? 'Unknown'
+
+// ─── Nominatim geocoder ───────────────────────────────────────────────────────
+// Used when a user types a quarter not in the local list above.
+// Nominatim is OpenStreetMap's free geocoding API — no key needed.
+// Always append ", Cameroon" to bias results to the correct country.
+export interface GeoResult {
+  name: string
+  lat: number
+  lon: number
+  displayName: string
+}
+
+export async function geocodeQuarter(query: string): Promise<GeoResult[]> {
+  const encoded = encodeURIComponent(`${query}, Cameroon`)
+  const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=5&countrycodes=cm`
+
+  const res = await fetch(url, {
+    headers: {
+      // Nominatim usage policy requires a User-Agent identifying your app
+      'User-Agent': 'TrustLink/1.0 (artisan-connect-nw)',
+    },
+  })
+  if (!res.ok) throw new Error('Geocoding request failed')
+
+  const data = await res.json()
+  return data.map((item: Record<string, string>) => ({
+    name:        query,
+    lat:         parseFloat(item.lat),
+    lon:         parseFloat(item.lon),
+    displayName: item.display_name,
+  }))
 }
