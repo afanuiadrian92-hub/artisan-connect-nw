@@ -3,6 +3,7 @@ import {
   Wrench, User, Mail, Phone, MapPin,
   Lock, Eye, EyeOff, CheckCircle2
 } from 'lucide-react'
+import { quarterNames } from '../../data/nwRegionData'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Intent = 'customer' | 'artisan'
@@ -194,8 +195,8 @@ function RegisterForm() {
               className="bg-transparent flex-1 text-sm text-slate-700 outline-none cursor-pointer"
             >
               <option value="" disabled>Select your division</option>
-              {divisions.map((d) => (
-                <option key={d} value={d}>{d}</option>
+              {quarterNames.map((q) => (
+                <option key={q} value={q}>{q}</option>
               ))}
             </select>
           </InputField>

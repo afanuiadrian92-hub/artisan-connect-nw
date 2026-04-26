@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import SearchPage     from './pages/customer/SearchPage'
+import MyBookingsPage from './pages/customer/MyBookingsPage'
 
 // Pages
 import LandingPage       from './pages/shared/LandingPage'
@@ -9,6 +11,9 @@ import RegisterPage      from './pages/shared/RegisterPage'
 import CustomerDashboard from './pages/customer/CustomerDashboard'
 import ArtisanDashboard  from './pages/artisan/ArtisanDashboard'
 import AdminDashboard    from './pages/admin/AdminDashboard'
+import SettingsPage from './pages/shared/SettingsPage'
+import ArtisanProfilePage from './pages/artisan/ArtisanProfilePage'
+
 
 // ─── Smart redirect for already-logged-in users ───────────────────────────────
 // If a logged-in user visits /login, send them to their dashboard
@@ -40,6 +45,10 @@ function AppRoutes() {
       {/* Auth routes — redirect to dashboard if already logged in */}
       <Route path="/login"    element={<AuthRedirect><LoginPage /></AuthRedirect>} />
       <Route path="/register" element={<AuthRedirect><RegisterPage /></AuthRedirect>} />
+      <Route path="/search"            element={<ProtectedRoute allowedRoles={['customer']}><SearchPage /></ProtectedRoute>} />
+      <Route path="/customer/bookings" element={<ProtectedRoute allowedRoles={['customer']}><MyBookingsPage /></ProtectedRoute>} />
+      <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="/artisan" element={<ProtectedRoute allowedRoles={['artisan']}><ArtisanProfilePage /></ProtectedRoute>} />
 
       {/* Protected routes — role-locked */}
       <Route
