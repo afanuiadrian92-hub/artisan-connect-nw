@@ -3,6 +3,7 @@ const cors = require('cors')
 const helmet = require('helmet')
 const morgan = require('morgan')
 require('dotenv').config()
+require('./db/pool') // establishes and tests the connection on startup
 
 const app = express()
 
