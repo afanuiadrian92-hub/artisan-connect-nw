@@ -2,6 +2,7 @@ const express      = require('express')
 const cors         = require('cors')
 const helmet       = require('helmet')
 const morgan       = require('morgan')
+const artisanRoutes = require('./routes/artisans')
 require('dotenv').config()
 
 // Import database pool — establishes connection on startup
@@ -24,6 +25,8 @@ app.get('/api/health', (req, res) => {
 })
 
 app.use('/api/auth', authRoutes)
+// add this line after app.use('/api/auth', authRoutes)
+app.use('/api/artisans', artisanRoutes)
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {

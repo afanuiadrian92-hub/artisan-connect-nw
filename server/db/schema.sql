@@ -24,7 +24,7 @@ CREATE TABLE artisan_profiles (
   total_jobs          INTEGER DEFAULT 0,
   response_rate       INTEGER DEFAULT 100,
   lat                 DECIMAL(10, 8), -- latitude from Nominatim geocoding
-  long                DECIMAL(11, 8), -- longitude from Nominatim geocoding
+  lon                 DECIMAL(11, 8), -- longitude from Nominatim geocoding
   updated_at          TIMESTAMP DEFAULT NOW()
 );
 
