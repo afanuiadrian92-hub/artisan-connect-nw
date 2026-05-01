@@ -10,6 +10,8 @@ require('./db/pool')
 
 const authRoutes   = require('./routes/auth')
 const errorHandler = require('./middleware/errorHandler')
+const customerRoutes = require('./routes/customer')
+const quoteRoutes    = require('./routes/quotes')
 
 const app = express()
 
@@ -27,6 +29,9 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes)
 // add this line after app.use('/api/auth', authRoutes)
 app.use('/api/artisans', artisanRoutes)
+
+app.use('/api/customer', customerRoutes)
+app.use('/api/quotes',   quoteRoutes)
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
