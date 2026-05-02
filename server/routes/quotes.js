@@ -1,10 +1,11 @@
+// Save as: server/routes/quotes.js
+
 const express = require('express')
 const router  = express.Router()
 const pool    = require('../db/pool')
 const { verifyToken, requireRole } = require('../middleware/auth')
 
 // ── POST /api/quotes ──────────────────────────────────────────────────────────
-// Artisan submits a quote on an open job post
 router.post('/', verifyToken, requireRole('artisan'), async (req, res, next) => {
   try {
     const { jobId, price, message, estimatedHours } = req.body
@@ -13,26 +14,21 @@ router.post('/', verifyToken, requireRole('artisan'), async (req, res, next) => 
       return res.status(400).json({ error: 'Job ID and price are required.' })
     }
 
-    // Get artisan profile id
     const profileResult = await pool.query(
-      `SELECT id FROM artisan_profiles WHERE user_id = $1`,
-      [req.user.id]
+      `SELECT id FROM artisan_profiles WHERE user_id = $1`, [req.user.id]
     )
     if (profileResult.rows.length === 0) {
       return res.status(404).json({ error: 'Artisan profile not found.' })
     }
     const artisanProfileId = profileResult.rows[0].id
 
-    // Confirm job is still open
     const jobResult = await pool.query(
-      `SELECT * FROM job_posts WHERE id = $1 AND status = 'open'`,
-      [jobId]
+      `SELECT * FROM job_posts WHERE id = $1 AND status IN ('open','quoted')`, [jobId]
     )
     if (jobResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Job post not found or no longer open.' })
+      return res.status(400).json({ error: 'Job post not found or no longer accepting quotes.' })
     }
 
-    // Prevent duplicate quotes from same artisan
     const existing = await pool.query(
       `SELECT id FROM quotes WHERE job_id = $1 AND artisan_id = $2`,
       [jobId, artisanProfileId]
@@ -43,43 +39,33 @@ router.post('/', verifyToken, requireRole('artisan'), async (req, res, next) => 
 
     const result = await pool.query(
       `INSERT INTO quotes (job_id, artisan_id, price, message, estimated_hours, status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')
-       RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING *`,
       [jobId, artisanProfileId, price, message || null, estimatedHours || null]
     )
 
-    // Mark job as quoted (still open for more quotes)
     await pool.query(
-      `UPDATE job_posts SET status = 'quoted' WHERE id = $1 AND status = 'open'`,
-      [jobId]
+      `UPDATE job_posts SET status = 'quoted' WHERE id = $1 AND status = 'open'`, [jobId]
     )
 
-    // Notify the customer that a new quote arrived
     await pool.query(
-      `INSERT INTO notifications (user_id, type, message)
-       VALUES ($1, 'booking', $2)`,
+      `INSERT INTO notifications (user_id, type, message) VALUES ($1, 'booking', $2)`,
       [
         jobResult.rows[0].customer_id,
-        `You received a new quote of XAF ${price.toLocaleString()} for "${jobResult.rows[0].title}".`,
+        `New quote of XAF ${parseInt(price).toLocaleString()} received for "${jobResult.rows[0].title}".`,
       ]
     )
 
-    res.status(201).json({
-      message: 'Quote submitted successfully.',
-      quote:   result.rows[0],
-    })
+    res.status(201).json({ message: 'Quote submitted.', quote: result.rows[0] })
   } catch (err) {
     next(err)
   }
 })
 
 // ── GET /api/quotes/artisan ───────────────────────────────────────────────────
-// Artisan views all quotes they have submitted
 router.get('/artisan', verifyToken, requireRole('artisan'), async (req, res, next) => {
   try {
     const profileResult = await pool.query(
-      `SELECT id FROM artisan_profiles WHERE user_id = $1`,
-      [req.user.id]
+      `SELECT id FROM artisan_profiles WHERE user_id = $1`, [req.user.id]
     )
     if (profileResult.rows.length === 0) {
       return res.status(404).json({ error: 'Artisan profile not found.' })

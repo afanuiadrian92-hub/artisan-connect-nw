@@ -12,6 +12,8 @@ const authRoutes   = require('./routes/auth')
 const errorHandler = require('./middleware/errorHandler')
 const customerRoutes = require('./routes/customer')
 const quoteRoutes    = require('./routes/quotes')
+const adminRoutes    = require('./routes/admin')
+const paymentRoutes  = require('./routes/payments')
 
 const app = express()
 
@@ -32,6 +34,8 @@ app.use('/api/artisans', artisanRoutes)
 
 app.use('/api/customer', customerRoutes)
 app.use('/api/quotes',   quoteRoutes)
+app.use('/api/admin',     adminRoutes)
+app.use('/api/payments',  paymentRoutes)
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
