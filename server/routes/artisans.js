@@ -8,11 +8,16 @@ const {
   getRecommended,
 } = require('../controllers/artisanController')
 const { verifyToken, requireRole } = require('../middleware/auth')
+const { getTopArtisans } = require('../controllers/artisanController')
+
+// Public routes — add this line
+
 const { uploadDocument: multerDoc } = require('../config/cloudinary')
 
 // ── Public routes ─────────────────────────────────────────────────────────────
 router.get('/',              searchArtisans)   // GET /api/artisans
 router.get('/recommended',   getRecommended)   // GET /api/artisans/recommended
+router.get('/top',            getTopArtisans)   // GET /api/artisans/top
 router.get('/:id',           getArtisanById)   // GET /api/artisans/:id
 
 // ── Protected artisan-only routes ─────────────────────────────────────────────

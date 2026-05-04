@@ -9,6 +9,7 @@ require('dotenv').config()
 require('./db/pool')
 
 const authRoutes   = require('./routes/auth')
+const aiRoutes = require('./routes/ai')
 const errorHandler = require('./middleware/errorHandler')
 const customerRoutes = require('./routes/customer')
 const quoteRoutes    = require('./routes/quotes')
@@ -24,6 +25,7 @@ app.use(morgan('dev'))
 app.use(express.json())
 
 // ── API routes ───────────────────────────────────────────────────────────────
+app.use('/api/ai', aiRoutes)
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'TrustLink API is running' })
 })

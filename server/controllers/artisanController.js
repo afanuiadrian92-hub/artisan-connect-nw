@@ -1,6 +1,7 @@
 const pool = require('../db/pool')
 const { updateTrustScore } = require('../utils/trustScore')
 const { getDivisionByQuarter } = require('../utils/nwRegion')
+const { get } = require('../routes/ai')
 
 // ── GET /api/artisans ─────────────────────────────────────────────────────────
 // Public search — customers and guests can search without logging in
@@ -602,6 +603,75 @@ const getRecommended = async (req, res, next) => {
   }
 }
 
+// ── GET /api/artisans/top ─────────────────────────────────────────────────────
+// Returns top 3 artisans for the customer dashboard "Recommended this week"
+// Ranked by: trust score + avg rating + jobs completed this week
+// New artisans (< 5 jobs) included at end with is_new flag for AI blurb
+const getTopArtisans = async (req, res, next) => {
+  try {
+    const { quarter = '' } = req.query
+
+    const params = []
+    let quarterFilter = ''
+    if (quarter && quarter !== 'All Quarters') {
+      params.push(quarter)
+      quarterFilter = `AND u.quarter = $${params.length}`
+    }
+
+    // Main ranking query
+    // Weights: trust_score (primary) + avg_rating (secondary) + recent activity
+    const result = await pool.query(`
+      SELECT
+        u.id,
+        u.full_name,
+        u.quarter,
+        u.avatar_initials,
+        ap.id              AS artisan_profile_id,
+        ap.trust_score,
+        ap.avg_rating,
+        ap.total_jobs,
+        ap.availability_status,
+        -- Primary service name and rate
+        (SELECT asv.title FROM artisan_services asv
+         WHERE asv.artisan_id = ap.id
+         ORDER BY asv.rate_per_hour DESC LIMIT 1)         AS primary_service,
+        (SELECT asv.rate_per_hour FROM artisan_services asv
+         WHERE asv.artisan_id = ap.id
+         ORDER BY asv.rate_per_hour DESC LIMIT 1)         AS rate_per_hour,
+        (SELECT sc.name FROM artisan_services asv
+         JOIN service_categories sc ON asv.category_id = sc.id
+         WHERE asv.artisan_id = ap.id LIMIT 1)            AS category,
+        -- Jobs completed this week — boosts recently active artisans
+        (SELECT COUNT(*) FROM bookings b
+         WHERE b.artisan_id = ap.id
+           AND b.status = 'completed'
+           AND b.created_at >= NOW() - INTERVAL '7 days') AS jobs_this_week,
+        -- Flag new artisans for AI blurb on the frontend
+        CASE WHEN ap.total_jobs < 5 THEN true ELSE false END AS is_new_artisan
+      FROM users u
+      JOIN artisan_profiles ap ON u.id = ap.user_id
+      WHERE u.role = 'artisan'
+        AND ap.availability_status = 'available'
+        AND ap.trust_score > 0
+        ${quarterFilter}
+      ORDER BY
+        -- Established artisans ranked by composite score first
+        CASE WHEN ap.total_jobs >= 5 THEN 0 ELSE 1 END,
+        ap.trust_score       DESC,
+        ap.avg_rating        DESC,
+        jobs_this_week       DESC
+      LIMIT 3
+    `, params)
+
+    res.status(200).json({
+      artisans: result.rows,
+      week:     new Date().toISOString().split('T')[0],
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   searchArtisans,
   getArtisanById,
@@ -614,4 +684,5 @@ module.exports = {
   uploadDocument,
   getDocuments,
   getRecommended,
+  getTopArtisans,
 }
