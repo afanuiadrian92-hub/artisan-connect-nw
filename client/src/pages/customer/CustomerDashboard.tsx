@@ -1,5 +1,7 @@
 import AppSidebar from '../../components/AppSidebar'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import api from '../../utils/api'
+import { useAuth } from '../../context/AuthContext'
 import {
   Wrench, Home, Search, CalendarDays, Settings,
   LogOut, Menu, X, Star, TrendingUp, Clock,
@@ -298,31 +300,200 @@ function RecommendedArtisans() {
 }
 
 // ─── Main content area ────────────────────────────────────────────────────────
-function MainContent() {
-  return (
-    <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto bg-slate-50 min-h-screen">
 
-      {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800">Welcome back!</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Manage your bookings and find trusted service providers
-        </p>
-      </div>
+  function MainContent() {
+    const { user } = useAuth()
+    const [dashData, setDashData] = useState<{
+      totalBookings: number
+      completed: number
+      inProgress: number
+      scheduled: number
+      avgRatingGiven: string
+      recentBookings: Array<{
+        id: number
+        status: string
+        scheduled_date: string
+        total_amount: number
+        service_title: string
+        artisan_name: string
+        avatar_initials: string
+        has_review: boolean
+      }>
+    } | null>(null)
 
-      {/* Stats */}
-      <div className="mb-6">
-        <StatsRow />
-      </div>
+    const [recommended, setRecommended] = useState<Array<{
+      id: number
+      full_name: string
+      quarter: string
+      avatar_initials: string
+      trust_score: number
+      avg_rating: string
+      primary_service: string
+      rate_per_hour: number
+      is_new_artisan: boolean
+    }>>([])
 
-      {/* Bookings + Recommended — stack on mobile, side by side on desktop */}
-      <div className="flex flex-col lg:flex-row gap-5">
-        <RecentBookings />
-        <RecommendedArtisans />
-      </div>
-    </main>
-  )
-}
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+      const fetchAll = async () => {
+        try {
+          const [dashRes, topRes] = await Promise.all([
+            api.get('/customer/dashboard'),
+            api.get('/artisans/top'),
+          ])
+          setDashData(dashRes.data)
+          setRecommended(topRes.data.artisans)
+        } catch (err) {
+          console.error('Dashboard fetch error:', err)
+        } finally {
+          setLoading(false)
+        }
+      }
+      fetchAll()
+    }, [])
+
+    if (loading) {
+      return (
+        <div className="flex-1 flex items-center justify-center bg-slate-50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-slate-500 text-sm">Loading dashboard...</p>
+          </div>
+        </div>
+      )
+    }
+
+    // Build stats from real data
+    const stats = [
+      {
+        icon: <CalendarDays size={24} className="text-orange-400" />,
+        value: dashData?.totalBookings ?? 0,
+        label: 'Total Bookings',
+      },
+      {
+        icon: <TrendingUp size={24} className="text-emerald-500" />,
+        value: dashData?.completed ?? 0,
+        label: 'Completed',
+      },
+      {
+        icon: <Clock size={24} className="text-blue-500" />,
+        value: dashData?.inProgress ?? 0,
+        label: 'In Progress',
+      },
+      {
+        icon: <Star size={24} className="text-amber-400" />,
+        value: dashData?.avgRatingGiven ?? '0.0',
+        label: 'Avg Rating Given',
+      },
+    ]
+
+    return (
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto bg-slate-50 min-h-screen">
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800">
+            Welcome back{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}!
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Manage your bookings and find trusted service providers
+          </p>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {stats.map((stat) => (
+            <div key={stat.label} className="bg-white rounded-2xl border border-slate-100 p-5 flex flex-col gap-2 shadow-sm hover:shadow-md transition-shadow">
+              {stat.icon}
+              <span className="text-2xl font-extrabold text-slate-800">{stat.value}</span>
+              <span className="text-xs text-slate-500">{stat.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-5">
+          {/* Recent bookings */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm flex-1">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-extrabold text-slate-800 text-lg">Recent Bookings</h2>
+              <a href="/customer/bookings" className="text-amber-500 hover:text-amber-600 text-sm font-semibold transition-colors">
+                View All →
+              </a>
+            </div>
+
+            {dashData?.recentBookings.length === 0 ? (
+              <div className="text-center py-10">
+                <p className="text-slate-400 text-sm">No bookings yet.</p>
+                <a href="/search" className="mt-3 inline-block text-amber-500 text-sm font-semibold hover:text-amber-600">
+                  Find an artisan →
+                </a>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {dashData?.recentBookings.map((booking) => (
+                  <div key={booking.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors">
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm">{booking.service_title}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">by {booking.artisan_name}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-slate-400">{booking.scheduled_date}</span>
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                        booking.status === 'completed'   ? 'bg-emerald-100 text-emerald-700' :
+                        booking.status === 'in-progress' ? 'bg-blue-100 text-blue-700' :
+                                                          'bg-amber-100 text-amber-700'
+                      }`}>
+                        {booking.status}
+                      </span>
+                      <span className="text-xs font-bold text-slate-600">
+                        XAF {booking.total_amount.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Recommended artisans */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm w-full lg:w-72 xl:w-80 shrink-0">
+            <h2 className="font-extrabold text-slate-800 text-lg mb-1">Top Artisans This Week</h2>
+            <p className="text-xs text-slate-400 mb-4">Ranked by trust score and recent activity</p>
+
+            {recommended.length === 0 ? (
+              <p className="text-slate-400 text-sm text-center py-6">No artisans available yet.</p>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {recommended.map((artisan) => (
+                  <div key={artisan.id} className="flex items-center gap-3 cursor-pointer group"
+                    onClick={() => window.location.href = `/artisan/${artisan.id}`}>
+                    <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0">
+                      {artisan.avatar_initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-800 text-sm group-hover:text-amber-600 transition-colors truncate">
+                        {artisan.full_name}
+                      </p>
+                      <p className="text-xs text-slate-400">{artisan.primary_service} · {artisan.quarter}</p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Star size={11} className="text-amber-400" fill="currentColor" />
+                        <span className="text-xs font-semibold text-slate-700">{parseFloat(artisan.avg_rating || '0').toFixed(1)}</span>
+                        <span className="text-xs text-emerald-600 font-semibold ml-1">{artisan.trust_score}% trust</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <a href="/search"
+              className="mt-5 w-full flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl transition-all hover:scale-[1.02] shadow-md shadow-amber-200">
+              Find More Artisans
+            </a>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function CustomerDashboard() {

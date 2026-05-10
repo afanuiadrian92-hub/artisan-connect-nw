@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import api from '../../utils/api'
 import { useNavigate } from 'react-router-dom'
 import {
   Wrench, User, Mail, Phone, MapPin,
@@ -60,31 +61,45 @@ function RegisterForm() {
     return ''
   }
 
+  // Add to imports at top
+
+// Replace handleSubmit with this
   const handleSubmit = async () => {
     const err = validate()
     if (err) { setError(err); return }
     setError('')
     setLoading(true)
     try {
-      await new Promise((res) => setTimeout(res, 800))
-      // TODO: replace with real API call
-      // const res = await axios.post('/api/auth/register', {
-      //   fullName, email, phone, quarter, password, role: intent
-      // })
-      const role: UserRole = intent === 'artisan' ? 'artisan' : 'customer'
-      const mockUser: AuthUser = {
-        id: Date.now(),
+      const res = await api.post('/auth/register', {
         fullName,
         email,
+        phone,
+        quarter,
+        password,
+        role: intent === 'artisan' ? 'artisan' : 'customer',
+      })
+
+      const role: UserRole = res.data.user.role
+      const userData: AuthUser = {
+        id:             res.data.user.id,
+        fullName:       res.data.user.fullName,
+        email:          res.data.user.email,
         role,
-        division: quarter,
-        token: 'mock-jwt-token',
-        avatarInitials: (fullName.split(' ').map(p => p[0]).join('')).toUpperCase().slice(0, 2),
+        division:       res.data.user.quarter || '',
+        token:          res.data.token,
+        avatarInitials: res.data.user.avatarInitials,
       }
-      login(mockUser)
+
+      login(userData)
       navigate(roleRoute[role])
-    } catch {
-      setError('Registration failed. Please try again.')
+
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { error?: string } } }
+        setError(axiosErr.response?.data?.error || 'Registration failed.')
+      } else {
+        setError('Could not connect to server.')
+      }
     } finally {
       setLoading(false)
     }

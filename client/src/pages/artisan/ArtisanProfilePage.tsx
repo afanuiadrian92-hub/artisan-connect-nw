@@ -1,140 +1,177 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
-  CheckCircle2, Clock, XCircle, Upload, Plus,
-  Pencil, Trash2, Menu, Bell, Wrench, Eye,
-  ShieldCheck, Star, Briefcase
+  CheckCircle2, Clock, XCircle, Upload, Eye,
+  Plus, Pencil, Trash2, Menu, Bell, Wrench,
+  Shield, Star, Briefcase, Save
 } from 'lucide-react'
 import AppSidebar from '../../components/AppSidebar'
-import NotificationBell, { NotificationItem } from '../../components/NotificationBell'
 import { useAuth } from '../../context/AuthContext'
 import { quarterNames } from '../../data/nwRegionData'
+import api from '../../utils/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type DocStatus = 'verified' | 'pending' | 'rejected'
 
 interface VerificationDoc {
   id: number
-  name: string
-  uploaded: string
-  expires?: string
+  doc_name: string
+  file_url: string
   status: DocStatus
-  rejectionReason?: string
+  rejection_reason: string | null
+  expiry_date: string | null
+  uploaded_at: string
 }
 
-interface Service {
+interface ArtisanService {
   id: number
   title: string
   description: string
-  ratePerHour: number   // XAF
+  rate_per_hour: number
+  category: string
 }
 
-// ─── Placeholder data — replace with API calls later ─────────────────────────
-const initialDocs: VerificationDoc[] = [
-  { id: 1, name: 'Professional License',   uploaded: '2026-03-15', expires: '2027-03-15', status: 'verified'  },
-  { id: 2, name: 'Insurance Certificate',  uploaded: '2026-03-10', expires: '2027-03-10', status: 'verified'  },
-  { id: 3, name: 'Background Check',       uploaded: '2026-04-20',                         status: 'pending'   },
-  { id: 4, name: 'Tax Clearance',          uploaded: '2026-04-15',                         status: 'rejected',
-     rejectionReason: 'Document expired' },
-]
+interface ProfileData {
+  full_name: string
+  email: string
+  phone: string
+  quarter: string
+  bio: string
+  trust_score: number
+  avg_rating: number
+  total_jobs: number
+}
 
-const initialServices: Service[] = [
-  { id: 1, title: 'Emergency Plumbing',  description: '24/7 emergency plumbing services',        ratePerHour: 6000 },
-  { id: 2, title: 'Pipe Installation',   description: 'New pipe installation and replacement',    ratePerHour: 4500 },
-  { id: 3, title: 'Drain Cleaning',      description: 'Professional drain cleaning and maintenance', ratePerHour: 4000 },
-]
+interface TrustBreakdown {
+  label: string
+  value: string
+  icon: React.ReactNode
+  ok: boolean
+}
 
-const mockNotifications: NotificationItem[] = [
-  { id: 1, text: 'Your Professional License has been verified', time: '1 hour ago',  unread: true,  type: 'verification' },
-  { id: 2, text: 'Tax Clearance rejected — please re-upload',  time: '3 hours ago', unread: true,  type: 'verification' },
-  { id: 3, text: 'New booking request from Alice Brown',        time: '5 hours ago', unread: false, type: 'booking'      },
-]
-
-const primaryServices = [
-  'Plumbing', 'Electrical', 'Solar', 'Mechanic',
-  'Laundry', 'HVAC', 'Tailoring', 'Home Care', 'Other',
-]
-
-const formatXAF = (n: number) => `XAF ${n.toLocaleString()}`
-
-// ─── Document status config ───────────────────────────────────────────────────
-const docStatusConfig: Record<DocStatus, {
-  icon: React.ReactNode; bg: string; text: string
-}> = {
+// ─── Status config ────────────────────────────────────────────────────────────
+const statusConfig: Record<DocStatus, { icon: React.ReactNode; bg: string; label: string }> = {
   verified: {
-    icon: <CheckCircle2 size={20} className="text-emerald-500" />,
-    bg: 'bg-emerald-50', text: 'text-emerald-600',
+    icon:  <CheckCircle2 size={20} className="text-emerald-500" />,
+    bg:    'bg-emerald-100',
+    label: 'Verified',
   },
   pending: {
-    icon: <Clock size={20} className="text-amber-500" />,
-    bg: 'bg-amber-50', text: 'text-amber-600',
+    icon:  <Clock size={20} className="text-amber-500" />,
+    bg:    'bg-amber-100',
+    label: 'Pending',
   },
   rejected: {
-    icon: <XCircle size={20} className="text-red-500" />,
-    bg: 'bg-red-50', text: 'text-red-600',
+    icon:  <XCircle size={20} className="text-red-500" />,
+    bg:    'bg-red-100',
+    label: 'Rejected',
   },
 }
 
-// ─── Add / Edit Service Modal ─────────────────────────────────────────────────
-function ServiceModal({
-  existing,
-  onSave,
-  onClose,
-}: {
-  existing?: Service
-  onSave: (s: Omit<Service, 'id'>) => void
-  onClose: () => void
-}) {
-  const [title, setTitle]       = useState(existing?.title ?? '')
-  const [desc, setDesc]         = useState(existing?.description ?? '')
-  const [rate, setRate]         = useState(existing ? String(existing.ratePerHour) : '')
-  const [error, setError]       = useState('')
+const serviceCategories = [
+  { id: 1, name: 'Plumbing'   },
+  { id: 2, name: 'Electrical' },
+  { id: 3, name: 'Solar'      },
+  { id: 4, name: 'Mechanic'   },
+  { id: 5, name: 'Laundry'    },
+  { id: 6, name: 'HVAC'       },
+  { id: 7, name: 'Tailoring'  },
+  { id: 8, name: 'Home Care'  },
+]
 
-  const handleSave = () => {
-    if (!title.trim()) { setError('Service title is required.'); return }
+// ─── Service Modal ────────────────────────────────────────────────────────────
+function ServiceModal({ service, onClose, onSave }: {
+  service?: ArtisanService
+  onClose: () => void
+  onSave: () => void
+}) {
+  const [title, setTitle]         = useState(service?.title || '')
+  const [description, setDesc]    = useState(service?.description || '')
+  const [rate, setRate]           = useState(service?.rate_per_hour?.toString() || '')
+  const [categoryId, setCategoryId] = useState(
+    serviceCategories.find(c => c.name === service?.category)?.id || 1
+  )
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState('')
+
+  const handleSave = async () => {
+    if (!title.trim())                { setError('Title is required.'); return }
     if (!rate || isNaN(Number(rate))) { setError('Enter a valid rate.'); return }
-    onSave({ title: title.trim(), description: desc.trim(), ratePerHour: Number(rate) })
+    setLoading(true)
+    try {
+      if (service) {
+        await api.patch(`/artisans/artisan/services/${service.id}`, {
+          title: title.trim(),
+          description: description.trim(),
+          ratePerHour: Number(rate),
+        })
+      } else {
+        await api.post('/artisans/artisan/services', {
+          title: title.trim(),
+          description: description.trim(),
+          categoryId,
+          ratePerHour: Number(rate),
+        })
+      }
+      onSave()
+      onClose()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      setError(err.response?.data?.error || 'Failed to save service.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}>
+        onClick={e => e.stopPropagation()}>
         <h2 className="font-extrabold text-slate-800 text-lg">
-          {existing ? 'Edit Service' : 'Add New Service'}
+          {service ? 'Edit Service' : 'Add Service'}
         </h2>
 
+        {!service && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Category</label>
+            <select value={categoryId} onChange={e => setCategoryId(Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-400">
+              {serviceCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Service Title</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)}
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Title</label>
+          <input value={title} onChange={e => setTitle(e.target.value)}
             placeholder="e.g. Emergency Plumbing"
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-amber-400 transition-all" />
+            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-400" />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Description</label>
-          <textarea value={desc} onChange={(e) => setDesc(e.target.value)}
-            placeholder="Brief description of this service"
-            rows={2}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-amber-400 resize-none transition-all" />
+          <textarea value={description} onChange={e => setDesc(e.target.value)}
+            placeholder="Brief description" rows={2}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-400 resize-none" />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Rate per Hour (XAF)</label>
-          <input value={rate} onChange={(e) => setRate(e.target.value)}
-            placeholder="e.g. 4500" type="number" min={0}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-amber-400 transition-all" />
+          <input value={rate} onChange={e => setRate(e.target.value)} type="number"
+            placeholder="e.g. 4500"
+            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-400" />
         </div>
 
         {error && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
-        <div className="flex gap-3 pt-1">
+        <div className="flex gap-3">
           <button onClick={onClose}
-            className="flex-1 py-2.5 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl hover:border-slate-300 transition-colors">
+            className="flex-1 py-2.5 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl">
             Cancel
           </button>
-          <button onClick={handleSave}
-            className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl transition-colors shadow-md shadow-amber-200">
-            {existing ? 'Save Changes' : 'Add Service'}
+          <button onClick={handleSave} disabled={loading}
+            className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-bold text-sm rounded-xl shadow-md shadow-amber-200">
+            {loading ? 'Saving...' : service ? 'Save Changes' : 'Add Service'}
           </button>
         </div>
       </div>
@@ -142,262 +179,306 @@ function ServiceModal({
   )
 }
 
-// ─── Verification Documents Panel ────────────────────────────────────────────
-function VerificationDocuments() {
-  const [docs, setDocs]             = useState<VerificationDoc[]>(initialDocs)
-  const fileInputRef                = useRef<HTMLInputElement>(null)
-  const [uploadTarget, setUploadTarget] = useState<number | null>(null) // reupload doc id
+// ─── Verification Documents ───────────────────────────────────────────────────
+function VerificationSection() {
+  const [docs, setDocs]     = useState<VerificationDoc[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [docName, setDocName]     = useState('')
+  const [showNameInput, setShowNameInput] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const selectedFile = useRef<File | null>(null)
 
-  const handleUpload = (docId?: number) => {
-    setUploadTarget(docId ?? null)
-    fileInputRef.current?.click()
+  const fetchDocs = async () => {
+    try {
+      const res = await api.get('/artisans/artisan/documents')
+      setDocs(res.data.documents || [])
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  useEffect(() => { fetchDocs() }, [])
 
-    if (uploadTarget !== null) {
-      // Re-upload a rejected doc — set to pending for admin review
-      setDocs((prev) => prev.map((d) =>
-        d.id === uploadTarget
-          ? { ...d, status: 'pending', uploaded: new Date().toISOString().split('T')[0], rejectionReason: undefined }
-          : d
-      ))
-    } else {
-      // New document upload
-      const newDoc: VerificationDoc = {
-        id: Date.now(),
-        name: file.name.replace(/\.[^.]+$/, ''), // strip extension
-        uploaded: new Date().toISOString().split('T')[0],
-        status: 'pending',
-      }
-      setDocs((prev) => [...prev, newDoc])
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      selectedFile.current = e.target.files[0]
+      setShowNameInput(true)
     }
-    setUploadTarget(null)
-    e.target.value = ''
-    // TODO: POST /api/documents (FormData with file + docType)
+  }
+
+  const handleUpload = async () => {
+    if (!selectedFile.current || !docName.trim()) {
+      alert('Please enter a document name.')
+      return
+    }
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('document', selectedFile.current)
+      formData.append('docName', docName.trim())
+
+      await api.post('/artisans/artisan/documents', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+
+      setDocName('')
+      setShowNameInput(false)
+      selectedFile.current = null
+      if (fileRef.current) fileRef.current.value = ''
+      fetchDocs()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      alert(err.response?.data?.error || 'Upload failed.')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+      <div className="flex items-center justify-between mb-5">
         <h2 className="font-extrabold text-slate-800 text-lg">Verification Documents</h2>
-        <button
-          onClick={() => handleUpload()}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl transition-colors shadow-md shadow-amber-200"
-        >
-          <Upload size={15} />
-          Upload Document
+        <button onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-amber-200">
+          <Upload size={15} /> Upload Document
         </button>
       </div>
 
       {/* Hidden file input */}
-      <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
-        onChange={handleFileChange} />
+      <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png"
+        className="hidden" onChange={handleFileSelected} />
 
-      <div className="flex flex-col gap-3">
-        {docs.map((doc) => {
-          const cfg = docStatusConfig[doc.status]
-          return (
-            <div key={doc.id} className={`rounded-xl border p-4 ${
-              doc.status === 'rejected' ? 'border-red-100 bg-red-50/30' : 'border-slate-100'
-            }`}>
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                {/* Icon + name + dates */}
-                <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 ${cfg.bg} rounded-xl flex items-center justify-center shrink-0`}>
-                    {cfg.icon}
+      {/* Document name input — shown after file is selected */}
+      {showNameInput && (
+        <div className="mb-4 flex gap-2 items-center bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <input
+            value={docName}
+            onChange={e => setDocName(e.target.value)}
+            placeholder="Document name (e.g. National ID)"
+            className="flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+          />
+          <button onClick={handleUpload} disabled={uploading}
+            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-bold rounded-lg">
+            {uploading ? 'Uploading...' : 'Upload'}
+          </button>
+          <button onClick={() => { setShowNameInput(false); selectedFile.current = null }}
+            className="text-slate-400 hover:text-slate-600">
+            <XCircle size={16} />
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-slate-400 text-sm text-center py-4">Loading documents...</p>
+      ) : docs.length === 0 ? (
+        <p className="text-slate-400 text-sm text-center py-4">
+          No documents uploaded yet. Upload your ID or professional license to increase your trust score.
+        </p>
+      ) : (
+        <div className="flex flex-col divide-y divide-slate-100">
+          {docs.map((doc) => {
+            const cfg = statusConfig[doc.status]
+            return (
+              <div key={doc.id} className="py-4 first:pt-0">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 ${cfg.bg} rounded-xl flex items-center justify-center shrink-0 mt-0.5`}>
+                      {cfg.icon}
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm">{doc.doc_name}</p>
+                      <div className="flex flex-wrap gap-3 mt-0.5 text-xs text-slate-400">
+                        <span>Uploaded: {new Date(doc.uploaded_at).toLocaleDateString()}</span>
+                        {doc.expiry_date && <span>Expires: {doc.expiry_date}</span>}
+                        <span className={`font-semibold ${
+                          doc.status === 'verified' ? 'text-emerald-600' :
+                          doc.status === 'pending'  ? 'text-amber-600'  : 'text-red-500'
+                        }`}>{cfg.label}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold text-slate-800 text-sm">{doc.name}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Uploaded: {doc.uploaded}
-                      {doc.expires && <span> · Expires: {doc.expires}</span>}
-                    </p>
-                    <span className={`text-xs font-semibold capitalize ${cfg.text}`}>
-                      {doc.status}
+                  <div className="flex items-center gap-2">
+                    <a href={doc.file_url} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-300 text-slate-600 text-xs font-semibold rounded-lg transition-colors">
+                      <Eye size={12} /> View
+                    </a>
+                    {doc.status === 'rejected' && (
+                      <button onClick={() => fileRef.current?.click()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg">
+                        <Upload size={12} /> Re-upload
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {doc.status === 'rejected' && doc.rejection_reason && (
+                  <div className="mt-3">
+                    <span className="inline-flex items-center gap-1.5 text-xs bg-red-50 border border-red-100 text-red-600 rounded-lg px-3 py-1.5 font-medium">
+                      <XCircle size={11} /> Rejection Reason: {doc.rejection_reason}
                     </span>
                   </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 shrink-0">
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 hover:border-slate-300 text-xs font-semibold rounded-lg transition-colors">
-                    <Eye size={13} /> View
-                    {/* TODO: open Cloudinary URL in a new tab */}
-                  </button>
-                  {doc.status === 'rejected' && (
-                    <button
-                      onClick={() => handleUpload(doc.id)}
-                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors"
-                    >
-                      Re-upload
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
-
-              {/* Rejection reason */}
-              {doc.status === 'rejected' && doc.rejectionReason && (
-                <div className="mt-3 flex items-center gap-2 bg-red-100 text-red-600 rounded-lg px-3 py-2">
-                  <XCircle size={13} />
-                  <p className="text-xs font-semibold">
-                    Rejection Reason: <span className="font-normal">{doc.rejectionReason}</span>
-                  </p>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
-// ─── My Services Panel ────────────────────────────────────────────────────────
-function MyServices() {
-  const [services, setServices]           = useState<Service[]>(initialServices)
-  const [modalOpen, setModalOpen]         = useState(false)
-  const [editTarget, setEditTarget]       = useState<Service | undefined>()
+// ─── My Services ─────────────────────────────────────────────────────────────
+function ServicesSection() {
+  const [services, setServices]     = useState<ArtisanService[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [modalOpen, setModalOpen]   = useState(false)
+  const [editTarget, setEditTarget] = useState<ArtisanService | undefined>()
 
-  const openAdd = () => { setEditTarget(undefined); setModalOpen(true) }
-  const openEdit = (s: Service) => { setEditTarget(s); setModalOpen(true) }
+  const fetchServices = async () => {
+    // Services are returned in the artisan profile endpoint
+    // We re-use the dashboard data — or we can call the public profile
+    // For now fetch from the artisan's own profile via getMe
+    try {
+      const res = await api.get('/auth/me')
+      const profileRes = await api.get(`/artisans/${res.data.user.id}`)
+      setServices(profileRes.data.services || [])
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }
 
-  const handleSave = (data: Omit<Service, 'id'>) => {
-    if (editTarget) {
-      setServices((prev) => prev.map((s) => s.id === editTarget.id ? { ...s, ...data } : s))
-      // TODO: PUT /api/services/:id
-    } else {
-      setServices((prev) => [...prev, { id: Date.now(), ...data }])
-      // TODO: POST /api/services
+  useEffect(() => { fetchServices() }, [])
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Delete this service?')) return
+    try {
+      await api.delete(`/artisans/artisan/services/${id}`)
+      fetchServices()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      alert(err.response?.data?.error || 'Could not delete service.')
     }
-    setModalOpen(false)
-  }
-
-  const handleDelete = (id: number) => {
-    setServices((prev) => prev.filter((s) => s.id !== id))
-    // TODO: DELETE /api/services/:id
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-4">
+    <>
       {modalOpen && (
-        <ServiceModal existing={editTarget} onSave={handleSave} onClose={() => setModalOpen(false)} />
+        <ServiceModal
+          service={editTarget}
+          onClose={() => { setModalOpen(false); setEditTarget(undefined) }}
+          onSave={fetchServices}
+        />
       )}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-extrabold text-slate-800 text-lg">My Services</h2>
+          <button onClick={() => { setEditTarget(undefined); setModalOpen(true) }}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl shadow-md shadow-amber-200">
+            <Plus size={15} /> Add Service
+          </button>
+        </div>
 
-      <div className="flex items-center justify-between">
-        <h2 className="font-extrabold text-slate-800 text-lg">My Services</h2>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl transition-colors shadow-md shadow-amber-200"
-        >
-          <Plus size={15} />
-          Add Service
-        </button>
+        {loading ? (
+          <p className="text-slate-400 text-sm text-center py-4">Loading services...</p>
+        ) : services.length === 0 ? (
+          <p className="text-slate-400 text-sm text-center py-4">
+            No services added yet. Add your first service offering.
+          </p>
+        ) : (
+          <div className="flex flex-col divide-y divide-slate-100">
+            {services.map((svc) => (
+              <div key={svc.id} className="py-4 first:pt-0 last:pb-0 flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-800 text-sm">{svc.title}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{svc.description}</p>
+                  <span className="inline-block mt-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold px-3 py-1 rounded-full">
+                    XAF {svc.rate_per_hour.toLocaleString()} / hr
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => { setEditTarget(svc); setModalOpen(true) }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-amber-300 text-slate-600 hover:text-amber-600 text-xs font-semibold rounded-lg transition-all">
+                    <Pencil size={12} /> Edit
+                  </button>
+                  <button onClick={() => handleDelete(svc.id)}
+                    className="p-1.5 border border-red-100 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-
-      {services.length === 0 ? (
-        <div className="text-center py-8 text-slate-400 text-sm">
-          No services added yet. Click "Add Service" to get started.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {services.map((service) => (
-            <div key={service.id} className="flex items-start justify-between gap-3 p-4 rounded-xl border border-slate-100 hover:border-amber-200 transition-colors">
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-slate-800 text-sm">{service.title}</p>
-                <p className="text-xs text-slate-400 mt-0.5 leading-snug">{service.description}</p>
-                <span className="inline-block mt-2 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1">
-                  {formatXAF(service.ratePerHour)} / hr
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => openEdit(service)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 hover:border-slate-300 text-xs font-semibold rounded-lg transition-colors"
-                >
-                  <Pencil size={12} /> Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(service.id)}
-                  className="p-1.5 border border-red-100 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
-                  aria-label="Delete service"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    </>
   )
 }
 
-// ─── Profile Information Panel ────────────────────────────────────────────────
-function ProfileInformation() {
-  const { user } = useAuth()
-  const [fullName, setFullName]   = useState(user?.fullName ?? 'John Smith')
-  const [email]                   = useState(user?.email ?? 'john.smith@example.com')
-  const [phone, setPhone]         = useState('+237 6XX XXX XXX')
-  const [service, setService]     = useState('Plumbing')
-  const [quarter, setQuarter]     = useState(user?.division ?? 'Mile 4')
-  const [saved, setSaved]         = useState(false)
+// ─── Profile Information ──────────────────────────────────────────────────────
+function ProfileInfo({ profile, onSaved }: { profile: ProfileData; onSaved: () => void }) {
+  const [fullName, setFullName] = useState(profile.full_name)
+  const [phone, setPhone]       = useState(profile.phone || '')
+  const [quarter, setQuarter]   = useState(profile.quarter || '')
+  const [bio, setBio]           = useState(profile.bio || '')
+  const [saving, setSaving]     = useState(false)
+  const [saved, setSaved]       = useState(false)
 
-  const handleSave = () => {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
-    // TODO: PATCH /api/artisan/profile { fullName, phone, service, quarter }
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await api.patch('/artisans/artisan/profile', { fullName, phone, quarter, bio })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+      onSaved()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      alert(err.response?.data?.error || 'Could not save profile.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-4">
-      <h2 className="font-extrabold text-slate-800 text-lg">Profile Information</h2>
-
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <h2 className="font-extrabold text-slate-800 text-base mb-4">Profile Information</h2>
       <div className="flex flex-col gap-3">
-        {/* Full Name */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-slate-500">Full Name</label>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all" />
-        </div>
+        {[
+          { label: 'Full Name', value: fullName, setter: setFullName, disabled: false },
+          { label: 'Email',     value: profile.email, setter: undefined, disabled: true  },
+          { label: 'Phone',     value: phone, setter: setPhone, disabled: false },
+        ].map((f) => (
+          <div key={f.label} className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-slate-500">{f.label}</label>
+            <input value={f.value} onChange={e => f.setter?.(e.target.value)}
+              disabled={f.disabled}
+              className={`border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${
+                f.disabled
+                  ? 'bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'bg-slate-50 border-slate-200 text-slate-700 focus:border-amber-400'
+              }`}
+            />
+          </div>
+        ))}
 
-        {/* Email — read only */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-slate-500">Email</label>
-          <input value={email} disabled
-            className="bg-slate-100 border border-slate-100 rounded-xl px-4 py-2.5 text-sm text-slate-400 outline-none cursor-not-allowed" />
-        </div>
-
-        {/* Phone */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-slate-500">Phone</label>
-          <input value={phone} onChange={(e) => setPhone(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all" />
-        </div>
-
-        {/* Primary Service */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-slate-500">Primary Service</label>
-          <select value={service} onChange={(e) => setService(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-amber-400 cursor-pointer transition-all">
-            {primaryServices.map((s) => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-
-        {/* Quarter — changed from Division */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-slate-500">Quarter</label>
-          <select value={quarter} onChange={(e) => setQuarter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-amber-400 cursor-pointer transition-all">
-            {quarterNames.map((q) => <option key={q}>{q}</option>)}
+          <select value={quarter} onChange={e => setQuarter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 outline-none cursor-pointer focus:border-amber-400">
+            <option value="">Select quarter</option>
+            {quarterNames.map(q => <option key={q}>{q}</option>)}
           </select>
         </div>
 
-        <button onClick={handleSave}
-          className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm rounded-xl transition-colors mt-1">
-          {saved ? '✓ Changes Saved!' : 'Save Changes'}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-slate-500">Bio</label>
+          <textarea value={bio} onChange={e => setBio(e.target.value)}
+            placeholder="Describe your skills and experience..."
+            rows={3}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-amber-400 resize-none" />
+        </div>
+
+        <button onClick={handleSave} disabled={saving}
+          className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white font-bold text-sm rounded-xl transition-colors flex items-center justify-center gap-2 mt-1">
+          <Save size={14} />
+          {saving ? 'Saving...' : saved ? '✓ Saved!' : 'Save Changes'}
         </button>
       </div>
     </div>
@@ -405,51 +486,54 @@ function ProfileInformation() {
 }
 
 // ─── Trust Score Panel ────────────────────────────────────────────────────────
-// Read-only — computed server-side, never user-editable
-function TrustScorePanel() {
-  const score = 98  // TODO: GET /api/artisan/trust-score
+function TrustScorePanel({ profile }: { profile: ProfileData }) {
+  const breakdown: TrustBreakdown[] = [
+    {
+      label: 'Documents Verified',
+      value: profile.trust_score > 0 ? '✓' : '—',
+      icon:  <Shield size={14} className="text-emerald-500" />,
+      ok:    profile.trust_score > 0,
+    },
+    {
+      label: 'Customer Rating',
+      value: `${(profile.avg_rating || 0).toFixed(1)}/5`,
+      icon:  <Star size={14} className="text-amber-400" />,
+      ok:    (profile.avg_rating || 0) >= 4,
+    },
+    {
+      label: 'Jobs Completed',
+      value: profile.total_jobs.toString(),
+      icon:  <Briefcase size={14} className="text-blue-500" />,
+      ok:    profile.total_jobs > 0,
+    },
+  ]
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-extrabold text-slate-800 text-lg">Trust Score</h2>
-        <span className="text-3xl font-extrabold text-emerald-500">{score}%</span>
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-extrabold text-slate-800 text-base">Trust Score</h2>
+        <span className="text-2xl font-extrabold text-emerald-500">{profile.trust_score}%</span>
       </div>
-
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <span className="text-sm text-slate-500">Documents Verified</span>
-          <CheckCircle2 size={18} className="text-emerald-500" />
-        </div>
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <span className="text-sm text-slate-500">Background Check</span>
-          <CheckCircle2 size={18} className="text-emerald-500" />
-        </div>
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <div className="flex items-center gap-1.5">
-            <Star size={14} className="text-amber-400" fill="currentColor" />
-            <span className="text-sm text-slate-500">Customer Rating</span>
+        {breakdown.map((item) => (
+          <div key={item.label} className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2 text-slate-500">
+              {item.icon}{item.label}
+            </div>
+            <span className={`font-bold text-xs ${item.ok ? 'text-emerald-600' : 'text-slate-400'}`}>
+              {item.value}
+            </span>
           </div>
-          <span className="text-sm font-bold text-slate-700">4.9/5</span>
-        </div>
-        <div className="flex items-center justify-between py-2">
-          <div className="flex items-center gap-1.5">
-            <Briefcase size={14} className="text-slate-400" />
-            <span className="text-sm text-slate-500">Jobs Completed</span>
-          </div>
-          <span className="text-sm font-bold text-slate-700">156</span>
-        </div>
+        ))}
       </div>
-
-      {/* Score breakdown explanation */}
-      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
-        <div className="flex items-start gap-2">
-          <ShieldCheck size={15} className="text-emerald-600 mt-0.5 shrink-0" />
-          <p className="text-xs text-emerald-700 leading-snug">
-            Your trust score is calculated automatically from verification status,
-            ratings, and job history. It cannot be manually edited.
-          </p>
+      <div className="mt-4 bg-slate-50 rounded-xl p-3">
+        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500 rounded-full transition-all duration-700"
+            style={{ width: `${profile.trust_score}%` }} />
         </div>
+        <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+          Calculated from verification level, ratings, jobs completed, and response rate.
+        </p>
       </div>
     </div>
   )
@@ -457,7 +541,6 @@ function TrustScorePanel() {
 
 // ─── Mobile top bar ───────────────────────────────────────────────────────────
 function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
-  const [notifications, setNotifications] = useState(mockNotifications)
   return (
     <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100 sticky top-0 z-20">
       <button onClick={onMenuClick} className="p-2 rounded-lg text-slate-600 hover:bg-slate-100">
@@ -471,58 +554,77 @@ function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
           Trust<span className="text-amber-500">Link</span>
         </span>
       </div>
-      <NotificationBell
-        notifications={notifications}
-        onMarkAllRead={() => setNotifications((p) => p.map((n) => ({ ...n, unread: false })))}
-      />
+      <button className="p-2 rounded-lg text-slate-600 hover:bg-slate-100"><Bell size={20} /></button>
     </div>
   )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ArtisanProfilePage() {
+  const { user }  = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [notifications, setNotifications] = useState(mockNotifications)
+  const [profile, setProfile]         = useState<ProfileData | null>(null)
+  const [loading, setLoading]         = useState(true)
+
+  const fetchProfile = async () => {
+    try {
+      if (!user?.id) return
+      const res = await api.get(`/artisans/${user.id}`)
+      setProfile({
+        full_name:   res.data.full_name,
+        email:       user.email,
+        phone:       res.data.phone || '',
+        quarter:     res.data.quarter || '',
+        bio:         res.data.bio || '',
+        trust_score: res.data.trust_score || 0,
+        avg_rating:  parseFloat(res.data.avg_rating) || 0,
+        total_jobs:  res.data.total_jobs || 0,
+      })
+    } catch (e) {
+      console.error('Profile fetch error:', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchProfile() }, [user?.id])
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-500 text-sm">Loading profile...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} activeHref="/artisan/profile" />
-
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar onMenuClick={() => setSidebarOpen(true)} />
-
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-
-          {/* Header */}
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800">Profile & Verification</h1>
-              <p className="text-slate-500 text-sm mt-1">Manage your documents and service offerings</p>
-            </div>
-            {/* Desktop bell */}
-            <div className="hidden lg:block">
-              <NotificationBell
-                notifications={notifications}
-                onMarkAllRead={() => setNotifications((p) => p.map((n) => ({ ...n, unread: false })))}
-              />
-            </div>
+          <div className="mb-6">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800">Profile & Verification</h1>
+            <p className="text-slate-500 text-sm mt-1">Manage your documents and service offerings</p>
           </div>
-
-          {/* Two-column layout — stacks on mobile */}
-          <div className="flex flex-col lg:flex-row gap-5 items-start">
-
-            {/* Left column — documents + services */}
-            <div className="flex-1 flex flex-col gap-5 min-w-0">
-              <VerificationDocuments />
-              <MyServices />
+          <div className="flex flex-col lg:flex-row gap-5">
+            {/* Left — documents + services */}
+            <div className="flex-1 flex flex-col gap-5">
+              <VerificationSection />
+              <ServicesSection />
             </div>
-
-            {/* Right column — profile info + trust score */}
-            <div className="flex flex-col gap-5 w-full lg:w-72 xl:w-80 shrink-0">
-              <ProfileInformation />
-              <TrustScorePanel />
+            {/* Right — profile info + trust score */}
+            <div className="flex flex-col gap-5 w-full lg:w-72 shrink-0">
+              {profile && (
+                <>
+                  <ProfileInfo profile={profile} onSaved={fetchProfile} />
+                  <TrustScorePanel profile={profile} />
+                </>
+              )}
             </div>
-
           </div>
         </main>
       </div>

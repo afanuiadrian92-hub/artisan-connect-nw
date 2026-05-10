@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Wrench, Mail, Lock, Eye, EyeOff, Users, ShieldCheck, Clock } from 'lucide-react'
 import { useAuth, UserRole, AuthUser } from '../../context/AuthContext'
+import api from '../../utils/api'
 
 type Role = UserRole
 
@@ -46,7 +47,6 @@ function LoginForm() {
   const [email, setEmail]               = useState('')
   const [password, setPassword]         = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe]     = useState(false)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState('')
 
@@ -55,26 +55,30 @@ function LoginForm() {
     if (!email || !password) { setError('Please fill in all fields.'); return }
     setLoading(true)
     try {
-      // ── Uncomment when backend is ready ──────────────────────────────────────
-      // const res = await axios.post('/api/auth/login', { email, password, role })
-      // login(res.data)
-      // navigate(roleRoute[res.data.role])
+      // Real API call — replaces the mock setTimeout block
+      const res = await api.post('/auth/login', { email, password, role })
 
-      // ── Mock login — lets you test navigation right now ───────────────────────
-      await new Promise((res) => setTimeout(res, 800))
-      const mockUser: AuthUser = {
-        id: 1,
-        fullName: role === 'admin' ? 'Admin User' : role === 'artisan' ? 'John Artisan' : 'Jane Customer',
-        email,
-        role,
-        division: 'Mezam',
-        token: 'mock-jwt-token',
-        avatarInitials: role === 'admin' ? 'AU' : role === 'artisan' ? 'JA' : 'JC',
+      const userData: AuthUser = {
+        id:             res.data.user.id,
+        fullName:       res.data.user.fullName,
+        email:          res.data.user.email,
+        role:           res.data.user.role,
+        division:       res.data.user.quarter || '',
+        token:          res.data.token,
+        avatarInitials: res.data.user.avatarInitials,
       }
-      login(mockUser)
-      navigate(roleRoute[role])
-    } catch {
-      setError('Login failed. Please check your credentials.')
+
+      login(userData)
+      navigate(roleRoute[userData.role])
+
+    } catch (err: unknown) {
+      // Show the exact error message from the backend
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { error?: string } } }
+        setError(axiosErr.response?.data?.error || 'Login failed. Please try again.')
+      } else {
+        setError('Could not connect to server. Make sure the backend is running.')
+      }
     } finally {
       setLoading(false)
     }
@@ -139,16 +143,10 @@ function LoginForm() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 accent-amber-500 rounded" />
-            <span className="text-sm text-slate-600">Remember me</span>
-          </label>
-          <a href="/forgot-password" className="text-sm text-amber-500 hover:text-amber-600 font-medium">Forgot password?</a>
-        </div>
-
         {error && (
-          <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-lg px-4 py-2">{error}</p>
+          <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-lg px-4 py-2">
+            {error}
+          </p>
         )}
 
         <button
