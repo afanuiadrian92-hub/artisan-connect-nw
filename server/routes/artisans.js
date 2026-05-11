@@ -5,32 +5,33 @@ const {
   updateProfile, updateAvailability,
   addService, updateService, deleteService,
   uploadDocument, getDocuments,
-  getRecommended,
+  getRecommended, getTopArtisans,
+  getArtisanBookings, markBookingComplete,
 } = require('../controllers/artisanController')
 const { verifyToken, requireRole } = require('../middleware/auth')
-const { getTopArtisans } = require('../controllers/artisanController')
-
-// Public routes — add this line
-
 const { uploadDocument: multerDoc } = require('../config/cloudinary')
 
 // ── Public routes ─────────────────────────────────────────────────────────────
-router.get('/',              searchArtisans)   // GET /api/artisans
-router.get('/recommended',   getRecommended)   // GET /api/artisans/recommended
-router.get('/top',            getTopArtisans)   // GET /api/artisans/top
-router.get('/:id',           getArtisanById)   // GET /api/artisans/:id
+// IMPORTANT: /recommended and /top MUST come before /:id — Express matches in order
+// and literal strings like "top" would otherwise be caught by /:id as an artisan ID.
+router.get('/',            searchArtisans)  // GET /api/artisans
+router.get('/recommended', getRecommended)  // GET /api/artisans/recommended
+router.get('/top',         getTopArtisans)  // GET /api/artisans/top
+router.get('/:id',         getArtisanById)  // GET /api/artisans/:id
 
 // ── Protected artisan-only routes ─────────────────────────────────────────────
 // All routes below require a valid JWT with role = 'artisan'
 router.use(verifyToken, requireRole('artisan'))
 
-router.get   ('/artisan/dashboard',      getArtisanDashboard) // GET  /api/artisans/artisan/dashboard
-router.patch ('/artisan/profile',        updateProfile)       // PATCH
-router.patch ('/artisan/availability',   updateAvailability)  // PATCH
-router.get   ('/artisan/documents',      getDocuments)        // GET
-router.post  ('/artisan/documents',      multerDoc.single('document'), uploadDocument) // POST with file
-router.post  ('/artisan/services',       addService)          // POST
-router.patch ('/artisan/services/:id',   updateService)       // PATCH
-router.delete('/artisan/services/:id',   deleteService)       // DELETE
+router.get   ('/artisan/dashboard',             getArtisanDashboard)                          // GET  /api/artisans/artisan/dashboard
+router.patch ('/artisan/profile',               updateProfile)                                // PATCH
+router.patch ('/artisan/availability',          updateAvailability)                           // PATCH
+router.get   ('/artisan/documents',             getDocuments)                                 // GET
+router.post  ('/artisan/documents',             multerDoc.single('document'), uploadDocument)  // POST with file
+router.post  ('/artisan/services',              addService)                                   // POST
+router.patch ('/artisan/services/:id',          updateService)                                // PATCH
+router.delete('/artisan/services/:id',          deleteService)                                // DELETE
+router.get   ('/artisan/bookings',              getArtisanBookings)                           // GET  /api/artisans/artisan/bookings
+router.patch ('/artisan/bookings/:id/complete', markBookingComplete)                          // PATCH /api/artisans/artisan/bookings/:id/complete
 
 module.exports = router

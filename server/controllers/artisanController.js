@@ -672,6 +672,136 @@ const getTopArtisans = async (req, res, next) => {
   }
 }
 
+// ── GET /api/artisans/artisan/bookings ───────────────────────────────────────
+// Artisan views all their own bookings — joined with job title and customer name
+// Supports optional ?status= filter (confirmed | in-progress | completed | cancelled)
+const getArtisanBookings = async (req, res, next) => {
+  try {
+    const userId = req.user.id
+    const { status } = req.query
+
+    // Resolve the artisan_profiles.id from the authenticated user's id
+    const profileResult = await pool.query(
+      `SELECT id FROM artisan_profiles WHERE user_id = $1`,
+      [userId]
+    )
+
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Artisan profile not found.' })
+    }
+
+    const artisanProfileId = profileResult.rows[0].id
+
+    // Build query — optionally filter by booking status
+    const params = [artisanProfileId]
+    let statusFilter = ''
+    if (status && status !== 'all') {
+      params.push(status)
+      statusFilter = `AND b.status = $${params.length}`
+    }
+
+    const result = await pool.query(
+      `SELECT
+         b.id,
+         b.status,
+         b.scheduled_date,
+         b.scheduled_time,
+         b.location,
+         b.total_amount,
+         b.payment_state,
+         b.created_at,
+         jp.title          AS service_title,
+         u.full_name       AS customer_name,
+         u.avatar_initials AS customer_avatar,
+         u.phone           AS customer_phone,
+         -- Review left by customer for this booking (if any)
+         r.stars           AS review_stars,
+         r.comment         AS review_comment
+       FROM bookings b
+       JOIN job_posts jp  ON b.job_id      = jp.id
+       JOIN users u       ON b.customer_id = u.id
+       LEFT JOIN reviews r ON r.booking_id = b.id
+       WHERE b.artisan_id = $1
+         ${statusFilter}
+       ORDER BY b.scheduled_date DESC, b.created_at DESC`,
+      params
+    )
+
+    res.status(200).json({ bookings: result.rows })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── PATCH /api/artisans/artisan/bookings/:id/complete ────────────────────────
+// Artisan marks an in-progress booking as completed
+// Mirrors the admin version but scoped to only the artisan's own bookings
+const markBookingComplete = async (req, res, next) => {
+  try {
+    const userId    = req.user.id
+    const { id }    = req.params
+
+    // Verify the booking belongs to this artisan and is in-progress
+    const bookingResult = await pool.query(
+      `SELECT b.id, b.artisan_id, b.customer_id, b.status, ap.id AS artisan_profile_id
+       FROM bookings b
+       JOIN artisan_profiles ap ON b.artisan_id = ap.id
+       WHERE b.id = $1 AND ap.user_id = $2`,
+      [id, userId]
+    )
+
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found or does not belong to you.' })
+    }
+
+    const booking = bookingResult.rows[0]
+
+    if (booking.status !== 'in-progress') {
+      return res.status(400).json({
+        error: `Booking cannot be completed — current status is "${booking.status}". Only in-progress bookings can be marked complete.`
+      })
+    }
+
+    // Mark booking complete
+    await pool.query(
+      `UPDATE bookings SET status = 'completed' WHERE id = $1`,
+      [id]
+    )
+
+    // Increment artisan's total_jobs counter
+    await pool.query(
+      `UPDATE artisan_profiles
+       SET total_jobs = total_jobs + 1, updated_at = NOW()
+       WHERE id = $1`,
+      [booking.artisan_profile_id]
+    )
+
+    // Recalculate trust score after job completion
+    await updateTrustScore(pool, booking.artisan_profile_id)
+
+    // Notify the customer that the job is done
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, message)
+       VALUES ($1, 'booking', $2)`,
+      [
+        booking.customer_id,
+        `Your booking has been marked as completed by your artisan. Please leave a review!`,
+      ]
+    )
+
+    // Notify the artisan as confirmation
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, message)
+       VALUES ($1, 'booking', $2)`,
+      [userId, `Booking #${id} marked as complete. Well done!`]
+    )
+
+    res.status(200).json({ message: 'Booking marked as completed.' })
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   searchArtisans,
   getArtisanById,
@@ -685,4 +815,6 @@ module.exports = {
   getDocuments,
   getRecommended,
   getTopArtisans,
+  getArtisanBookings,
+  markBookingComplete,
 }
