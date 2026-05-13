@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Wrench, Home, Search, CalendarDays, Settings, LogOut, X,
   User, LayoutDashboard, ClipboardCheck, AlertTriangle, Users,
+  FileText,
 } from 'lucide-react'
 import { useAuth, UserRole } from '../context/AuthContext'
 import LogoutDialog from './LogoutDialog'
@@ -32,6 +33,7 @@ const navByRole: Record<UserRole, NavItem[]> = {
   customer: [
     { icon: <Home size={18} />,         label: 'Dashboard',     href: '/customer'          },
     { icon: <Search size={18} />,       label: 'Find Services', href: '/search'            },
+    { icon: <FileText size={18} />,     label: 'My Jobs',      href: '/customer/jobs'     },
     { icon: <CalendarDays size={18} />, label: 'My Bookings',   href: '/customer/bookings' },
     { icon: <Settings size={18} />,     label: 'Settings',      href: '/settings'          },
   ],

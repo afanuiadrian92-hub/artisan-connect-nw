@@ -5,7 +5,8 @@ import { useAuth } from '../../context/AuthContext'
 import {
   Wrench, Home, Search, CalendarDays, Settings,
   LogOut, Menu, X, Star, TrendingUp, Clock,
-  ChevronRight, Bell, ArrowUpRight
+  ChevronRight, Bell, ArrowUpRight,
+  FileText
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -398,6 +399,13 @@ function RecommendedArtisans() {
             Manage your bookings and find trusted service providers
           </p>
         </div>
+        <a
+          href="/customer/post-job"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl transition-colors shadow-md shadow-amber-200">
+        <FileText size={15} /> Post a Job
+      </a>
+      <div style={{ display: 'flex', gap: '20px' }}>
+      </div>
 
         {/* Stats row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

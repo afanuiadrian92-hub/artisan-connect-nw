@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
   CalendarDays, Clock, MapPin, Star,
-  MessageCircle, XCircle, Menu, Bell, Wrench, CheckCircle2
+  MessageCircle, XCircle, Menu, Bell, 
+  Wrench, CheckCircle2, Banknote
 } from 'lucide-react'
 import AppSidebar from '../../components/AppSidebar'
 import api from '../../utils/api'
@@ -89,8 +90,137 @@ function ReviewModal({ booking, onClose, onSubmitted }: {
   )
 }
 
-function BookingCard({ booking, onLeaveReview, onCancel }: {
-  booking: Booking; onLeaveReview: (b: Booking) => void; onCancel: (id: number) => void
+// ─── PaymentModal ─────────────────────────────────────────────────────────────
+function PaymentModal({ booking, onClose, onSuccess }: {
+  booking: Booking; onClose: () => void; onSuccess: () => void
+}) {
+  const [phone,    setPhone]    = useState('')
+  const [stage,    setStage]    = useState<'input' | 'polling' | 'done' | 'failed'>('input')
+  const [error,    setError]    = useState('')
+  const [ussdCode, setUssdCode] = useState('')
+
+  const handlePay = async () => {
+    const cleaned = phone.replace(/\D/g, '')
+    if (cleaned.length < 9) { setError('Enter a valid phone number.'); return }
+    // CamPay expects 237XXXXXXXXX format
+    const formatted = cleaned.startsWith('237') ? cleaned : `237${cleaned}`
+    setError('')
+    setStage('polling')
+    try {
+      await api.post('/payments/initiate', { bookingId: booking.id, payerPhone: formatted })
+      // Poll every 3 seconds for up to 2 minutes (40 attempts)
+      let attempts = 0
+      const interval = setInterval(async () => {
+        attempts++
+        try {
+          const res = await api.get(`/payments/status/${booking.id}`)
+          const s = res.data.status
+          if (s === 'completed') {
+            clearInterval(interval)
+            setUssdCode(res.data.ussdCode || '')
+            setStage('done')
+            onSuccess()
+          } else if (s === 'failed') {
+            clearInterval(interval)
+            setStage('failed')
+          }
+        } catch { /* keep polling */ }
+        if (attempts >= 40) {
+          clearInterval(interval)
+          setStage('failed')
+          setError('Payment timed out. Please try again.')
+        }
+      }, 3000)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      setError(err.response?.data?.error || 'Could not initiate payment.')
+      setStage('input')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => { if (stage !== 'polling') onClose() }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5" onClick={e => e.stopPropagation()}>
+
+        {stage === 'input' && (
+          <>
+            <div>
+              <h2 className="font-extrabold text-slate-800 text-lg mb-1">Pay via Mobile Money</h2>
+              <p className="text-slate-500 text-sm">
+                You will receive a push notification on your phone to confirm{' '}
+                <span className="font-bold text-slate-700">{formatXAF(booking.total_amount)}</span>.
+              </p>
+            </div>
+            <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-700">
+              <span className="font-extrabold">Booking:</span> {booking.service_title} with {booking.artisan_name}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-bold text-slate-700">MTN MoMo / Orange Money Number</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="e.g. 677000000"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 text-slate-700"
+              />
+              <p className="text-xs text-slate-400">Enter digits only — country code added automatically</p>
+            </div>
+            {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+            <div className="flex gap-3">
+              <button onClick={onClose} className="flex-1 py-2.5 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl">Cancel</button>
+              <button onClick={handlePay} disabled={!phone.trim()} className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md shadow-amber-200">
+                Pay Now
+              </button>
+            </div>
+          </>
+        )}
+
+        {stage === 'polling' && (
+          <div className="flex flex-col items-center gap-4 py-4 text-center">
+            <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <div>
+              <p className="font-extrabold text-slate-800">Waiting for payment...</p>
+              <p className="text-slate-500 text-sm mt-1">Check your phone and approve the MoMo request. This page will update automatically.</p>
+            </div>
+          </div>
+        )}
+
+        {stage === 'done' && (
+          <div className="flex flex-col items-center gap-4 py-4 text-center">
+            <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center">
+              <CheckCircle2 size={32} className="text-emerald-500" />
+            </div>
+            <div>
+              <p className="font-extrabold text-slate-800 text-lg">Payment Confirmed!</p>
+              <p className="text-slate-500 text-sm mt-1">The booking is now in progress. The artisan has been notified.</p>
+            </div>
+            <button onClick={onClose} className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl">Done</button>
+          </div>
+        )}
+
+        {stage === 'failed' && (
+          <div className="flex flex-col items-center gap-4 py-4 text-center">
+            <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center">
+              <XCircle size={32} className="text-red-400" />
+            </div>
+            <div>
+              <p className="font-extrabold text-slate-800">Payment Failed</p>
+              <p className="text-slate-500 text-sm mt-1">{error || 'The payment was not completed. You can try again.'}</p>
+            </div>
+            <div className="flex gap-3 w-full">
+              <button onClick={onClose} className="flex-1 py-2.5 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl">Close</button>
+              <button onClick={() => setStage('input')} className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl">Try Again</button>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+
+function BookingCard({ booking, onLeaveReview, onCancel, onPay }: {
+  booking: Booking; onLeaveReview: (b: Booking) => void; onCancel: (id: number) => void; onPay: (b: Booking) => void
 }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-4">
@@ -152,10 +282,20 @@ function BookingCard({ booking, onLeaveReview, onCancel }: {
           </a>
         )}
         {booking.status === 'confirmed' && (
-          <button onClick={() => onCancel(booking.id)}
-            className="flex items-center gap-2 px-4 py-2.5 border border-red-200 text-red-500 hover:bg-red-50 text-sm font-semibold rounded-xl transition-colors">
-            <XCircle size={15} /> Cancel Booking
-          </button>
+          <>
+            <button
+              onClick={() => onPay(booking)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl transition-colors shadow-md shadow-amber-200"
+            >
+              <Banknote size={15} /> Pay Now
+            </button>
+            <button
+              onClick={() => onCancel(booking.id)}
+              className="flex items-center gap-2 px-4 py-2.5 border border-red-200 text-red-500 hover:bg-red-50 text-sm font-semibold rounded-xl transition-colors"
+            >
+              <XCircle size={15} /> Cancel Booking
+            </button>
+          </>
         )}
         {booking.status === 'completed' && !booking.review_stars && (
           <button onClick={() => onLeaveReview(booking)}
@@ -192,6 +332,7 @@ export default function MyBookingsPage() {
   const [loading, setLoading]           = useState(true)
   const [activeTab, setActiveTab]       = useState<FilterTab>('all')
   const [reviewTarget, setReviewTarget] = useState<Booking | null>(null)
+  const [paymentTarget, setPaymentTarget] = useState<Booking | null>(null)
 
   const fetchBookings = async (status = 'all') => {
     setLoading(true)
@@ -223,6 +364,12 @@ export default function MyBookingsPage() {
       {reviewTarget && (
         <ReviewModal booking={reviewTarget} onClose={() => setReviewTarget(null)} onSubmitted={() => fetchBookings(activeTab)} />
       )}
+      {paymentTarget && (
+      <PaymentModal
+        booking={paymentTarget}
+        onClose={() => setPaymentTarget(null)}
+        onSuccess={() => { setPaymentTarget(null); fetchBookings(activeTab) }}/>
+      )}
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
@@ -244,7 +391,7 @@ export default function MyBookingsPage() {
             </div>
           ) : bookings.length > 0 ? (
             <div className="flex flex-col gap-4">
-              {bookings.map(b => <BookingCard key={b.id} booking={b} onLeaveReview={setReviewTarget} onCancel={handleCancel} />)}
+              {bookings.map(b => <BookingCard key={b.id} booking={b} onLeaveReview={setReviewTarget} onCancel={handleCancel} onPay={setPaymentTarget} />)}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center">

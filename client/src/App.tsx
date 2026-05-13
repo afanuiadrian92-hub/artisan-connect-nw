@@ -9,12 +9,15 @@ import LandingPage          from './pages/shared/LandingPage'
 import LoginPage            from './pages/shared/LoginPage'
 import RegisterPage         from './pages/shared/RegisterPage'
 import CustomerDashboard    from './pages/customer/CustomerDashboard'
+import CustomerJobsPage from './pages/customer/CustomerJobsPage'
+import PostJobPage          from './pages/customer/PostJobPage'
 import ArtisanDashboard     from './pages/artisan/ArtisanDashboard'
 import ArtisanProfilePage    from './pages/artisan/ArtisanProfilePage'
 import ArtisanBookingsPage   from './pages/artisan/ArtisanBookingsPage'
 import PublicArtisanProfile  from './pages/shared/PublicArtisanProfile'
 import AdminDashboard        from './pages/admin/AdminDashboard'
 import VerificationQueuePage from './pages/admin/VerificationQueuePage'
+import AdminDisputesPage         from './pages/admin/AdminDisputesPage'
 import UserManagementPage      from './pages/admin/UserManagementPage'
 import SettingsPage          from './pages/shared/SettingsPage'
 
@@ -54,7 +57,8 @@ function AppRoutes() {
       <Route path="/customer"          element={<ProtectedRoute allowedRoles={['customer']}><CustomerDashboard /></ProtectedRoute>} />
       <Route path="/customer/bookings" element={<ProtectedRoute allowedRoles={['customer']}><MyBookingsPage /></ProtectedRoute>} />
       <Route path="/search"            element={<ProtectedRoute allowedRoles={['customer']}><SearchPage /></ProtectedRoute>} />
-
+      <Route path="/customer/jobs"     element={<ProtectedRoute allowedRoles={['customer']}><CustomerJobsPage /></ProtectedRoute>} />
+      <Route path="/customer/post-job" element={<ProtectedRoute allowedRoles={['customer']}><PostJobPage /></ProtectedRoute>} />
       {/* Public artisan profile — customer views this when clicking "View Profile".
           IMPORTANT: This route /artisan/:id must stay ABOVE the /artisan exact
           route so React Router doesn't try to match "123" as a sub-path of /artisan.
@@ -78,6 +82,7 @@ function AppRoutes() {
       <Route path="/admin"              element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/verification" element={<ProtectedRoute allowedRoles={['admin']}><VerificationQueuePage /></ProtectedRoute>} />
       <Route path="/admin/users"        element={<ProtectedRoute allowedRoles={['admin']}><UserManagementPage /></ProtectedRoute>} />
+      <Route path="/admin/disputes"     element={<ProtectedRoute allowedRoles={['admin']}><AdminDisputesPage /></ProtectedRoute>} />
       {/* Shared routes — any authenticated role */}
       <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 

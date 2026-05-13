@@ -449,10 +449,8 @@ export default function PublicArtisanProfile() {
   }
 
   // ── Book Now handler ────────────────────────────────────────────────────────
-  // TODO: Change this to navigate('/customer/post-job') once Item 7 is built.
-  // For now we return the customer to their dashboard where job posting will live.
   const handleBookNow = () => {
-    navigate('/customer')
+    navigate('/customer/post-job')
   }
 
   // ── Back button ─────────────────────────────────────────────────────────────
