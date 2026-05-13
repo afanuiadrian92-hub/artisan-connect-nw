@@ -368,6 +368,53 @@ const getNotifications = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+// ── PATCH /api/quotes/:quoteId/reject ────────────────────────────────────────
+// Customer manually rejects a single quote they don't want
+const rejectQuote = async (req, res, next) => {
+  const customerId = req.user.id
+  const { quoteId } = req.params
+  try {
+    // Verify the quote belongs to a job owned by this customer
+    const check = await pool.query(
+      `SELECT q.id, q.status, q.artisan_id, jp.customer_id, jp.status AS job_status, jp.title
+       FROM quotes q
+       JOIN job_posts jp ON jp.id = q.job_id
+       WHERE q.id = $1`,
+      [quoteId]
+    )
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Quote not found.' })
+    }
+    const row = check.rows[0]
+    if (row.customer_id !== customerId) {
+      return res.status(403).json({ error: 'Not your job.' })
+    }
+    if (row.status !== 'pending') {
+      return res.status(400).json({ error: 'Quote is no longer pending.' })
+    }
+    if (row.job_status === 'booked' || row.job_status === 'closed') {
+      return res.status(400).json({ error: 'Job is already booked or closed.' })
+    }
+    await pool.query(`UPDATE quotes SET status = 'rejected' WHERE id = $1`, [quoteId])
+
+    // Notify the artisan their quote was declined
+    const artisanUser = await pool.query(
+      `SELECT user_id FROM artisan_profiles WHERE id = $1`, [row.artisan_id]
+    )
+    if (artisanUser.rows.length > 0) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, type, message) VALUES ($1, 'booking', $2)`,
+        [
+          artisanUser.rows[0].user_id,
+          `Your quote for "${row.title}" was declined by the customer.`,
+        ]
+      )
+    }
+
+    res.json({ message: 'Quote rejected.' })
+  } catch (err) { next(err) }
+}
+
 // ── PATCH /api/customer/notifications/read ────────────────────────────────────
 const markNotificationsRead = async (req, res, next) => {
   try {
@@ -382,5 +429,5 @@ const markNotificationsRead = async (req, res, next) => {
 module.exports = {
   getCustomerDashboard, createJobPost, getMyJobPosts,
   getQuotesForJob, acceptQuote, getMyBookings, cancelBooking,
-  submitReview, getNotifications, markNotificationsRead,
+  submitReview, getNotifications, markNotificationsRead, rejectQuote,
 }

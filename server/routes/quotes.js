@@ -4,6 +4,7 @@ const express = require('express')
 const router  = express.Router()
 const pool    = require('../db/pool')
 const { verifyToken, requireRole } = require('../middleware/auth')
+const { rejectQuote } = require('../controllers/customerController')
 
 // ── POST /api/quotes ──────────────────────────────────────────────────────────
 router.post('/', verifyToken, requireRole('artisan'), async (req, res, next) => {
@@ -91,5 +92,8 @@ router.get('/artisan', verifyToken, requireRole('artisan'), async (req, res, nex
     next(err)
   }
 })
+
+// ── PATCH /api/quotes/:quoteId/reject ────────────────────────────────────────
+router.patch('/:quoteId/reject', verifyToken, requireRole('customer'), rejectQuote)
 
 module.exports = router
