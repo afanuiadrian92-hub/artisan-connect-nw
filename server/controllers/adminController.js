@@ -194,7 +194,7 @@ const getUsers = async (req, res, next) => {
     let query = `
       SELECT
         u.id, u.full_name, u.email, u.role, u.phone,
-        u.quarter, u.division, u.avatar_initials, u.created_at,
+        u.quarter, u.division, u.avatar_initials, u.is_suspended, u.created_at,
         ap.trust_score, ap.avg_rating, ap.total_jobs, ap.availability_status
       FROM users u
       LEFT JOIN artisan_profiles ap ON u.id = ap.user_id

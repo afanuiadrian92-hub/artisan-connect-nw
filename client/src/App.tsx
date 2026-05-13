@@ -15,6 +15,7 @@ import ArtisanBookingsPage   from './pages/artisan/ArtisanBookingsPage'
 import PublicArtisanProfile  from './pages/shared/PublicArtisanProfile'
 import AdminDashboard        from './pages/admin/AdminDashboard'
 import VerificationQueuePage from './pages/admin/VerificationQueuePage'
+import UserManagementPage      from './pages/admin/UserManagementPage'
 import SettingsPage          from './pages/shared/SettingsPage'
 
 
@@ -76,7 +77,7 @@ function AppRoutes() {
       {/* Admin routes */}
       <Route path="/admin"              element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/verification" element={<ProtectedRoute allowedRoles={['admin']}><VerificationQueuePage /></ProtectedRoute>} />
-
+      <Route path="/admin/users"        element={<ProtectedRoute allowedRoles={['admin']}><UserManagementPage /></ProtectedRoute>} />
       {/* Shared routes — any authenticated role */}
       <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 
